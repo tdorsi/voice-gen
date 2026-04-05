@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.env
+.venv/
+venv/
+env/
+conda-meta/
+
+# Logs
+logs/
+
+# Model weights and checkpoints
+*.ckpt
+*.bin
+*.pt
+*.pth
+*.safetensors
+
+# Audio and generated media
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.ogg
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local ffmpeg binary
+ffmpeg/
+
+# Editors / IDEs
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local config
+*.local
