@@ -30,6 +30,7 @@ LLAMA_CPP_DIR = MOSS_REPO / "moss_tts_delay" / "llama_cpp"
 CONFIG_DIR = MOSS_REPO / "configs" / "llama_cpp"
 VOICES_DIR = MOSS_ROOT / "voices"
 LOG_DIR = Path(r"D:\Development\Voice_Gen\logs")
+ONNX_DIR = MOSS_ROOT / "weights" / "MOSS-Audio-Tokenizer-ONNX"
 log = logging.getLogger("text_to_audio")
 
 
@@ -92,14 +93,14 @@ def setup_logging(run_name: str = "text_to_audio", log_file: Path | None = None)
 
 
 def banner() -> None:
-    line = "=" * 60
+    line = "═" * 60
     print(f"\n{BOLD}{CYAN}{line}")
     print("  Voice_Gen — Text-to-Audio Converter")
     print(f"{line}{RESET}\n")
 
 
 def header(stage: int, title: str) -> None:
-    line = "-" * 60
+    line = "─" * 60
     log.info("")
     log.info(line)
     log.info("  Stage %d: %s", stage, title)
@@ -110,8 +111,8 @@ def header(stage: int, title: str) -> None:
 
 
 def ok(msg: str) -> None:
-    log.info("  OK %s", msg)
-    print(f"{GREEN}  OK {msg}{RESET}")
+    log.info("  ✓ %s", msg)
+    print(f"{GREEN}  ✓ {msg}{RESET}")
 
 
 def warn(msg: str) -> None:
@@ -120,8 +121,8 @@ def warn(msg: str) -> None:
 
 
 def err(msg: str) -> None:
-    log.error("  X %s", msg)
-    print(f"{RED}  X {msg}{RESET}")
+    log.error("  ✗ %s", msg)
+    print(f"{RED}  ✗ {msg}{RESET}")
 
 
 def info(msg: str) -> None:
@@ -145,6 +146,32 @@ def add_windows_dll_paths() -> None:
         if dll_path.exists():
             ctypes.CDLL(str(dll_path))
             log.debug("Loaded DLL: %s", dll_path)
+
+
+def check_dependencies() -> None:
+    """Verify required packages and runtime files are present before starting."""
+    missing: list[str] = []
+
+    for pkg in ("numpy", "soundfile"):
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing.append(f"Python package not found: {pkg}  (pip install {pkg})")
+
+    for dll in ("ggml.dll", "llama.dll"):
+        if not (LLAMA_CPP_DIR / dll).exists():
+            missing.append(f"DLL not found: {LLAMA_CPP_DIR / dll}")
+
+    for onnx_file in ("encoder.onnx", "decoder.onnx"):
+        if not (ONNX_DIR / onnx_file).exists():
+            missing.append(f"ONNX weight not found: {ONNX_DIR / onnx_file}")
+
+    if missing:
+        for msg in missing:
+            err(msg)
+        raise SystemExit(1)
+
+    ok("Dependencies verified")
 
 
 def normalize_config_for_windows(config_path: Path) -> Path:
@@ -404,9 +431,26 @@ def fill_interactive_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
+def validate_args(args: argparse.Namespace) -> None:
+    """Check numeric bounds on CLI args before setup_logging is called."""
+    errors: list[str] = []
+    if args.chunk_chars < 10:
+        errors.append(f"--chunk-chars must be >= 10 (got {args.chunk_chars})")
+    if args.max_new_tokens < 1:
+        errors.append(f"--max-new-tokens must be >= 1 (got {args.max_new_tokens})")
+    if args.silence_ms < 0:
+        errors.append(f"--silence-ms must be >= 0 (got {args.silence_ms})")
+    if errors:
+        for msg in errors:
+            err(msg)
+        raise SystemExit(1)
+
+
 def main() -> int:
     banner()
+    check_dependencies()
     args = fill_interactive_args(parse_args())
+    validate_args(args)
     run_name = "text_to_audio"
     if args.voice and args.voice != "all":
         run_name = f"text_to_audio_{args.voice}"
@@ -416,7 +460,7 @@ def main() -> int:
     )
     log.info("Log file: %s", log_file)
     log.info("Command: %s", " ".join(sys.argv))
-    log.info("=" * 60)
+    log.info("═" * 60)
     log.info("Text-to-audio run started")
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
@@ -441,7 +485,7 @@ def main() -> int:
         config = custom_config or preset.config
         reference = custom_reference or preset.reference
         output_path = resolve_output_path(input_path, output, voice)
-        line = "=" * 60
+        line = "═" * 60
         log.info("")
         log.info(line)
         log.info("  Voice: %s", voice)
@@ -463,7 +507,7 @@ def main() -> int:
         )
         results.append((voice, final_output_path, status))
 
-    line = "=" * 60
+    line = "═" * 60
     print(f"\n{BOLD}{GREEN}{line}")
     print("  Text-to-audio conversion complete")
     for voice, path, status in results:

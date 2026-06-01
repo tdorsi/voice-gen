@@ -1,5 +1,11 @@
 @echo off
-:: Convert text files to WAV audio with local MOSS-TTS voices.
+:: Voice_Gen — text-to-audio conversion with local MOSS-TTS voices.
+::
+:: Usage:
+::   text_to_audio.bat
+::   text_to_audio.bat --input D:\Scripts\my_text.txt --voice lori
+::   text_to_audio.bat --input D:\Scripts\my_text.txt --voice all
+::   text_to_audio.bat --input D:\Scripts\my_text.txt --dry-run --show-chunks
 
 call conda activate moss-tts 2>nul
 if errorlevel 1 (
