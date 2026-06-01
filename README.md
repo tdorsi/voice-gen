@@ -1,6 +1,6 @@
 # Voice_Gen
 ## Version
-Current Version: v0.1.0
+Current Version: v0.2.0
 
 A fully local voice cloning pipeline that fine-tunes large text-to-speech models on consumer GPUs — no cloud APIs, no subscriptions, no data leaving your machine.
 
@@ -37,6 +37,7 @@ This project is also a foundational component of a larger system (Nova-Vex), whe
 
 - Fine-tunes an 8B parameter TTS model on a 12GB GPU  
 - Fully automated pipeline from raw audio → trained voice  
+- Converts text files to WAV audio using local MOSS-TTS voice configs  
 - Runs completely offline (no external APIs)  
 - Produces reusable voice models for downstream systems  
 - Resume-safe pipeline with stage-level recovery  
@@ -114,7 +115,9 @@ Voice_Gen expects ffmpeg to be available on the system.
 
 ## Usage
 
-### Basic
+### Voice Training Pipeline
+
+Use `voice_gen.bat` when preparing, training, and exporting a reusable voice.
 
 ```bat
 voice_gen.bat --voice MyVoice --input D:\Audio\raw --output D:\Audio\output
@@ -132,6 +135,57 @@ voice_gen.bat --from-stage 8
 # Zero-shot only (no fine-tuning)
 voice_gen.bat --skip-finetune
 ```
+
+### Text-to-Audio Conversion
+
+Use `text_to_audio.bat` when converting an existing `.txt` file to one or more WAV files with local MOSS-TTS voices. This is inference only; it does not train or fine-tune.
+
+```bat
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --output D:\Training_Data\Audio\TestOut
+```
+
+Supported built-in voices:
+
+| Voice | Config | Reference |
+|-------|--------|-----------|
+| `lori` | `D:\AI_Models\Voice\moss-tts\repo\configs\llama_cpp\lori.yaml` | `D:\AI_Models\Voice\moss-tts\voices\Lori_ref.wav` |
+| `lilybelle` | `D:\AI_Models\Voice\moss-tts\voices\lilybelle.yaml` | `D:\AI_Models\Voice\moss-tts\voices\lilybelle_ref_10s.wav` |
+| `hannah` | `D:\AI_Models\Voice\moss-tts\repo\configs\llama_cpp\hannah.yaml` | `D:\AI_Models\Voice\moss-tts\voices\Hannah_ref.wav` |
+| `all` | Runs `lori`, `lilybelle`, and `hannah` sequentially | Per voice |
+
+Common text-to-audio workflows:
+
+```bat
+# Prompt interactively
+text_to_audio.bat
+
+# Generate one voice
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --output D:\Training_Data\Audio\TestOut
+
+# Generate all built-in voices
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice all --output D:\Training_Data\Audio\TestOut
+
+# Replace an existing output file
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --output D:\Training_Data\Audio\TestOut --overwrite
+
+# Dry-run chunking without loading MOSS or generating audio
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --dry-run
+```
+
+If the target output already exists and overwrite is not selected, `text_to_audio.py` preserves the existing file and writes a timestamped sibling:
+
+```
+TTS_Script_01_hannah.wav
+TTS_Script_01_hannah_075924.wav
+```
+
+For long or difficult text, reduce chunk size and generation length:
+
+```bat
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --chunk-chars 100 --max-new-tokens 600
+```
+
+Stop any running MOSS inference server before large text-to-audio runs if VRAM is constrained. A loaded server can consume most of a 12GB GPU.
 
 ---
 
@@ -182,13 +236,14 @@ Peak VRAM during training: ~10.8 GB.
 
 ## Logs
 
-Each run generates a timestamped log:
+Each training or text-to-audio run generates a timestamped log:
 
 ```
 logs/<YYYYMMDD_HHMMSS>_<voice>.log
+logs/<YYYYMMDD_HHMMSS>_text_to_audio_<voice>.log
 ```
 
-Includes full DEBUG output and subprocess logs.
+Training logs include full DEBUG output and subprocess logs. Text-to-audio logs include command arguments, selected voice, input/output paths, chunk counts, per-chunk generation timings, output collision handling, final output path, and errors/tracebacks.
 
 ---
 
@@ -203,6 +258,30 @@ Use standalone static build (conda version causes DLL conflicts).
 ### CUDA OOM
 - Stop inference server before training  
 - Reduce LoRA rank if needed  
+
+### Text-to-audio context errors
+If llama.cpp reports a context or memory-slot decode error, reduce text generation workload:
+
+```bat
+text_to_audio.bat --input <file.txt> --voice hannah --chunk-chars 100 --max-new-tokens 600
+```
+
+The converter also retries failing chunks by splitting them smaller, but very long or punctuation-light sections may still require smaller chunk settings.
+
+### Text-to-audio output is not where expected
+When `--output` is a directory, files are written there as:
+
+```
+<input_stem>_<voice>.wav
+```
+
+If the file already exists and overwrite is declined, the converter writes:
+
+```
+<input_stem>_<voice>_<HHMMSS>.wav
+```
+
+Check the run log for the exact `Saved:` path.
 
 ---
 
@@ -220,6 +299,8 @@ Use standalone static build (conda version causes DLL conflicts).
 Voice_Gen/
   voice_gen.py
   voice_gen.bat
+  text_to_audio.py
+  text_to_audio.bat
   train_qlora.py
   logs/
   ffmpeg/
