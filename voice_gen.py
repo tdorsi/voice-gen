@@ -31,8 +31,10 @@ import shutil
 import subprocess
 import sys
 import traceback
-from datetime import datetime
 from pathlib import Path
+
+import voice_gen_utils as ui
+from voice_gen_utils import BOLD, CYAN, GREEN, RESET
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
@@ -74,65 +76,22 @@ log = logging.getLogger("voice_gen")
 
 def setup_logging(voice_name: str) -> Path:
     """Configure file + console logging. Returns the log file path."""
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = LOG_DIR / f"{ts}_{voice_name}.log"
-
-    log.setLevel(logging.DEBUG)
-
-    # File handler — full DEBUG detail, no colour codes
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)-8s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
-    log.addHandler(fh)
-
-    # Console handler — INFO and above (coloured output handled separately)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(logging.Formatter("%(message)s"))
-    log.addHandler(ch)
-
-    log.info("Log file: %s", log_file)
-    return log_file
-
-# ── Console helpers (write to both terminal and log file) ──────────────────────
-
-BOLD  = "\033[1m"
-CYAN  = "\033[96m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-RED   = "\033[91m"
-RESET = "\033[0m"
+    return ui.setup_logging(log, LOG_DIR, voice_name)
 
 def header(stage: int, title: str):
-    line = f"{'─'*60}"
-    log.info("")
-    log.info(line)
-    log.info("  Stage %d: %s", stage, title)
-    log.info(line)
-    # Coloured version to console only
-    print(f"\n{BOLD}{CYAN}{line}{RESET}")
-    print(f"{BOLD}{CYAN}  Stage {stage}: {title}{RESET}")
-    print(f"{BOLD}{CYAN}{line}{RESET}")
+    ui.header(log, stage, title)
 
 def ok(msg: str):
-    log.info("  ✓ %s", msg)
-    print(f"{GREEN}  ✓ {msg}{RESET}")
+    ui.ok(log, msg)
 
 def warn(msg: str):
-    log.warning("  ! %s", msg)
-    print(f"{YELLOW}  ! {msg}{RESET}")
+    ui.warn(log, msg)
 
 def err(msg: str):
-    log.error("  ✗ %s", msg)
-    print(f"{RED}  ✗ {msg}{RESET}")
+    ui.err(log, msg)
 
 def info(msg: str):
-    log.info("    %s", msg)
-    # Already printed by the log StreamHandler
+    ui.info(log, msg)
 
 # ── ffmpeg helpers ─────────────────────────────────────────────────────────────
 
@@ -756,9 +715,7 @@ def load_state(state_file: Path) -> dict:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def ask(prompt: str, default: str = "") -> str:
-    display = f"{prompt} [{default}]: " if default else f"{prompt}: "
-    val = input(display).strip()
-    return val or default
+    return ui.ask(prompt, default)
 
 def parse_args():
     p = argparse.ArgumentParser(description="MOSS-TTS voice cloning & fine-tuning pipeline")
@@ -823,9 +780,7 @@ def check_dependencies():
 def main():
     args = parse_args()
 
-    print(f"\n{BOLD}{CYAN}{'═'*60}")
-    print("  Voice_Gen — MOSS-TTS Voice Cloning Pipeline")
-    print(f"{'═'*60}{RESET}\n")
+    ui.banner("Voice_Gen — MOSS-TTS Voice Cloning Pipeline")
 
     check_dependencies()
 
@@ -839,13 +794,13 @@ def main():
     # Logging starts here — voice_name is known
     log_file = setup_logging(voice_name)
 
-    log.info("═" * 60)
+    log.info(ui.console_line("═", "="))
     log.info("Voice_Gen run started")
     log.info("  Voice name : %s", voice_name)
     log.info("  Input dir  : %s", input_dir)
     log.info("  Output dir : %s", output_dir)
     log.info("  From stage : %d", args.from_stage)
-    log.info("═" * 60)
+    log.info(ui.console_line("═", "="))
 
     if not input_dir.exists():
         err(f"Input directory not found: {input_dir}")
@@ -957,7 +912,8 @@ def main():
         err(f"  {log_file}")
         sys.exit(1)
 
-    print(f"\n{BOLD}{GREEN}{'═'*60}")
+    final_line = ui.console_line("═", "=")
+    print(f"\n{BOLD}{GREEN}{final_line}")
     print(f"  Voice '{voice_name}' pipeline complete!")
     print(f"  Reference : {ref_wav}")
     print(f"  Samples   : {samples_dir}")
@@ -965,7 +921,7 @@ def main():
         print(f"  Checkpoint: {checkpoint_dir}")
     print(f"  Config    : {output_dir / (voice_name + '.yaml')}")
     print(f"  Log       : {log_file}")
-    print(f"{'═'*60}{RESET}\n")
+    print(f"{final_line}{RESET}\n")
 
     log.info("Pipeline complete for voice '%s'", voice_name)
 

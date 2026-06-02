@@ -19,8 +19,10 @@ import tempfile
 import time
 import traceback
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
+
+import voice_gen_utils as ui
+from voice_gen_utils import BOLD, CYAN, GREEN, RESET
 
 
 SAMPLE_RATE = 24000
@@ -56,77 +58,32 @@ VOICE_PRESETS = {
 }
 
 
-# Console helpers match voice_gen.py so both tools feel like one utility suite.
-BOLD = "\033[1m"
-CYAN = "\033[96m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-RED = "\033[91m"
-RESET = "\033[0m"
-
-
 def setup_logging(run_name: str = "text_to_audio", log_file: Path | None = None) -> Path:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    if log_file is None:
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = LOG_DIR / f"{stamp}_{run_name}.log"
-
-    log.handlers.clear()
-    log.setLevel(logging.DEBUG)
-
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)-8s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-    log.addHandler(file_handler)
-
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(logging.Formatter("%(message)s"))
-    log.addHandler(console_handler)
-
-    return log_file
+    return ui.setup_logging(log, LOG_DIR, run_name, log_file)
 
 
 def banner() -> None:
-    line = "═" * 60
-    print(f"\n{BOLD}{CYAN}{line}")
-    print("  Voice_Gen — Text-to-Audio Converter")
-    print(f"{line}{RESET}\n")
+    ui.banner("Voice_Gen — Text-to-Audio Converter")
 
 
 def header(stage: int, title: str) -> None:
-    line = "─" * 60
-    log.info("")
-    log.info(line)
-    log.info("  Stage %d: %s", stage, title)
-    log.info(line)
-    print(f"\n{BOLD}{CYAN}{line}{RESET}")
-    print(f"{BOLD}{CYAN}  Stage {stage}: {title}{RESET}")
-    print(f"{BOLD}{CYAN}{line}{RESET}")
+    ui.header(log, stage, title)
 
 
 def ok(msg: str) -> None:
-    log.info("  ✓ %s", msg)
-    print(f"{GREEN}  ✓ {msg}{RESET}")
+    ui.ok(log, msg)
 
 
 def warn(msg: str) -> None:
-    log.warning("  ! %s", msg)
-    print(f"{YELLOW}  ! {msg}{RESET}")
+    ui.warn(log, msg)
 
 
 def err(msg: str) -> None:
-    log.error("  ✗ %s", msg)
-    print(f"{RED}  ✗ {msg}{RESET}")
+    ui.err(log, msg)
 
 
 def info(msg: str) -> None:
-    log.info("    %s", msg)
+    ui.info(log, msg)
 
 
 def add_windows_dll_paths() -> None:
@@ -238,7 +195,7 @@ def resolve_output_path(input_path: Path, output: Path | None, voice: str) -> Pa
 
 
 def timestamped_output_path(path: Path) -> Path:
-    stamp = datetime.now().strftime("%H%M%S")
+    stamp = ui.timestamp_for_filename()
     candidate = path.with_name(f"{path.stem}_{stamp}{path.suffix}")
     counter = 2
     while candidate.exists():
@@ -403,9 +360,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def ask(prompt: str, default: str = "") -> str:
-    suffix = f" [{default}]" if default else ""
-    value = input(f"{prompt}{suffix}: ").strip().strip('"')
-    return value or default
+    return ui.ask(prompt, default)
 
 
 def fill_interactive_args(args: argparse.Namespace) -> argparse.Namespace:
@@ -460,7 +415,7 @@ def main() -> int:
     )
     log.info("Log file: %s", log_file)
     log.info("Command: %s", " ".join(sys.argv))
-    log.info("═" * 60)
+    log.info(ui.console_line("═", "="))
     log.info("Text-to-audio run started")
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
@@ -485,7 +440,7 @@ def main() -> int:
         config = custom_config or preset.config
         reference = custom_reference or preset.reference
         output_path = resolve_output_path(input_path, output, voice)
-        line = "═" * 60
+        line = ui.console_line("═", "=")
         log.info("")
         log.info(line)
         log.info("  Voice: %s", voice)
@@ -507,7 +462,7 @@ def main() -> int:
         )
         results.append((voice, final_output_path, status))
 
-    line = "═" * 60
+    line = ui.console_line("═", "=")
     print(f"\n{BOLD}{GREEN}{line}")
     print("  Text-to-audio conversion complete")
     for voice, path, status in results:
