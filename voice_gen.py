@@ -33,23 +33,30 @@ import sys
 import traceback
 from pathlib import Path
 
+import voice_gen_config
 import voice_gen_utils as ui
 from voice_gen_utils import BOLD, CYAN, GREEN, RESET
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
-MOSS_REPO     = Path(r"D:\AI_Models\Voice\moss-tts\repo")
-WEIGHTS_DIR   = Path(r"D:\AI_Models\Voice\moss-tts\weights")
+try:
+    APP_CONFIG = voice_gen_config.load_config()
+except voice_gen_config.ConfigError as exc:
+    print(f"Config error: {exc}", file=sys.stderr)
+    raise SystemExit(1) from exc
+
+MOSS_REPO     = APP_CONFIG.paths.moss_repo
+WEIGHTS_DIR   = APP_CONFIG.paths.weights_dir
 HF_MOSS_DIR   = WEIGHTS_DIR / "MOSS-TTS-HF"
 HF_CODEC_DIR  = WEIGHTS_DIR / "MOSS-Audio-Tokenizer-HF"
 HF_MOSS_ID    = "OpenMOSS-Team/MOSS-TTS"
 HF_CODEC_ID   = "OpenMOSS-Team/MOSS-Audio-Tokenizer"
-VOICES_DIR    = Path(r"D:\AI_Models\Voice\moss-tts\voices")
+VOICES_DIR    = APP_CONFIG.paths.voices_dir
 SERVER_GGUF   = WEIGHTS_DIR / "MOSS-TTS-GGUF" / "MOSS_TTS_Q4_K_M.gguf"
-ONNX_ENC      = WEIGHTS_DIR / "MOSS-Audio-Tokenizer-ONNX" / "encoder.onnx"
-ONNX_DEC      = WEIGHTS_DIR / "MOSS-Audio-Tokenizer-ONNX" / "decoder.onnx"
-LOG_DIR       = Path(r"D:\Development\Voice_Gen\logs")
-FFMPEG_DIR    = Path(r"D:\Development\Voice_Gen\ffmpeg")  # standalone static build
+ONNX_ENC      = APP_CONFIG.moss.onnx_dir / "encoder.onnx"
+ONNX_DEC      = APP_CONFIG.moss.onnx_dir / "decoder.onnx"
+LOG_DIR       = APP_CONFIG.paths.log_dir
+FFMPEG_DIR    = APP_CONFIG.paths.ffmpeg_dir  # standalone static build
 
 # ── Audio constants ────────────────────────────────────────────────────────────
 
@@ -788,7 +795,7 @@ def main():
     input_dir  = Path(args.input  or ask("Input audio directory"))
     output_dir = Path(args.output or ask(
         "Output directory",
-        str(Path("D:/Development/Voice_Gen/output") / voice_name),
+        str(APP_CONFIG.paths.default_output_dir / voice_name),
     ))
 
     # Logging starts here — voice_name is known
@@ -796,11 +803,21 @@ def main():
 
     log.info(ui.console_line("═", "="))
     log.info("Voice_Gen run started")
+    log.info("  Config     : %s", APP_CONFIG.path)
     log.info("  Voice name : %s", voice_name)
     log.info("  Input dir  : %s", input_dir)
     log.info("  Output dir : %s", output_dir)
     log.info("  From stage : %d", args.from_stage)
     log.info(ui.console_line("═", "="))
+    try:
+        voice_gen_config.validate_paths(
+            APP_CONFIG,
+            ["moss_repo", "weights_dir", "voices_dir", "onnx_dir"],
+            logger=log,
+        )
+    except voice_gen_config.ConfigError as exc:
+        err(str(exc))
+        raise SystemExit(1) from exc
 
     if not input_dir.exists():
         err(f"Input directory not found: {input_dir}")

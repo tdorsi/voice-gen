@@ -1,0 +1,26 @@
+[paths]
+moss_root = "D:/AI_Models/Voice/moss-tts"
+moss_repo = "D:/AI_Models/Voice/moss-tts/repo"
+weights_dir = "D:/AI_Models/Voice/moss-tts/weights"
+log_dir = "D:/Development/Voice_Gen/logs"
+voices_dir = "D:/AI_Models/Voice/moss-tts/voices"
+default_output_dir = "D:/Training_Data/Audio/TestOut"
+default_input_file = "D:/Training_Data/Audio/Test_Script/TTS_Script_01.txt"
+ffmpeg_dir = "D:/Development/Voice_Gen/ffmpeg"
+
+[moss]
+config_dir = "D:/AI_Models/Voice/moss-tts/repo/configs/llama_cpp"
+llama_cpp_dir = "D:/AI_Models/Voice/moss-tts/repo/moss_tts_delay/llama_cpp"
+onnx_dir = "D:/AI_Models/Voice/moss-tts/weights/MOSS-Audio-Tokenizer-ONNX"
+
+[voices.lori]
+config = "D:/AI_Models/Voice/moss-tts/repo/configs/llama_cpp/lori.yaml"
+reference = "D:/AI_Models/Voice/moss-tts/voices/Lori_ref.wav"
+
+[voices.lilybelle]
+config = "D:/AI_Models/Voice/moss-tts/voices/lilybelle.yaml"
+reference = "D:/AI_Models/Voice/moss-tts/voices/lilybelle_ref_10s.wav"
+
+[voices.hannah]
+config = "D:/AI_Models/Voice/moss-tts/repo/configs/llama_cpp/hannah.yaml"
+reference = "D:/AI_Models/Voice/moss-tts/voices/Hannah_ref.wav"

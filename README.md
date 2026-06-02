@@ -115,6 +115,20 @@ Voice_Gen expects ffmpeg to be available on the system.
 
 ## Usage
 
+## Configuration
+
+Voice_Gen loads shared settings from `voice_gen.toml` in the repository root. The config path is resolved relative to the Python module location, so `voice_gen.py` and `text_to_audio.py` can be launched from batch files or other working directories.
+
+Key sections:
+
+| Section | Keys |
+|---------|------|
+| `[paths]` | `moss_root`, `moss_repo`, `weights_dir`, `log_dir`, `voices_dir`, `default_output_dir`, `default_input_file`, `ffmpeg_dir` |
+| `[moss]` | `config_dir`, `llama_cpp_dir`, `onnx_dir` |
+| `[voices.<name>]` | `config`, `reference` |
+
+If `voice_gen.toml` is missing or invalid, the tools fail fast with a clear config error. If required runtime paths are missing, the run log records each missing configured path before the tool exits.
+
 ### Voice Training Pipeline
 
 Use `voice_gen.bat` when preparing, training, and exporting a reusable voice.

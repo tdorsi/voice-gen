@@ -21,18 +21,25 @@ import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
+import voice_gen_config
 import voice_gen_utils as ui
 from voice_gen_utils import BOLD, CYAN, GREEN, RESET
 
 
 SAMPLE_RATE = 24000
-MOSS_ROOT = Path(r"D:\AI_Models\Voice\moss-tts")
-MOSS_REPO = MOSS_ROOT / "repo"
-LLAMA_CPP_DIR = MOSS_REPO / "moss_tts_delay" / "llama_cpp"
-CONFIG_DIR = MOSS_REPO / "configs" / "llama_cpp"
-VOICES_DIR = MOSS_ROOT / "voices"
-LOG_DIR = Path(r"D:\Development\Voice_Gen\logs")
-ONNX_DIR = MOSS_ROOT / "weights" / "MOSS-Audio-Tokenizer-ONNX"
+try:
+    APP_CONFIG = voice_gen_config.load_config()
+except voice_gen_config.ConfigError as exc:
+    print(f"Config error: {exc}", file=sys.stderr)
+    raise SystemExit(1) from exc
+
+MOSS_ROOT = APP_CONFIG.paths.moss_root
+MOSS_REPO = APP_CONFIG.paths.moss_repo
+LLAMA_CPP_DIR = APP_CONFIG.moss.llama_cpp_dir
+CONFIG_DIR = APP_CONFIG.moss.config_dir
+VOICES_DIR = APP_CONFIG.paths.voices_dir
+LOG_DIR = APP_CONFIG.paths.log_dir
+ONNX_DIR = APP_CONFIG.moss.onnx_dir
 log = logging.getLogger("text_to_audio")
 
 
@@ -369,8 +376,7 @@ def fill_interactive_args(args: argparse.Namespace) -> argparse.Namespace:
 
     print("Press Enter to accept defaults.")
 
-    default_input = r"D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt"
-    args.input = ask("Input text file", default_input)
+    args.input = ask("Input text file", str(APP_CONFIG.paths.default_input_file))
 
     voice_choices = ", ".join([*VOICE_PRESETS.keys(), "all"])
     voice = ask(f"Voice ({voice_choices})", args.voice).lower()
@@ -378,7 +384,7 @@ def fill_interactive_args(args: argparse.Namespace) -> argparse.Namespace:
         raise ValueError(f"Unknown voice: {voice}")
     args.voice = voice
 
-    output = ask("Output WAV path or directory", args.output or "")
+    output = ask("Output WAV path or directory", args.output or str(APP_CONFIG.paths.default_output_dir))
     args.output = output or args.output
 
     overwrite = ask("Overwrite existing files? y/N", "N").lower()
@@ -417,6 +423,16 @@ def main() -> int:
     log.info("Command: %s", " ".join(sys.argv))
     log.info(ui.console_line("═", "="))
     log.info("Text-to-audio run started")
+    log.info("Config: %s", APP_CONFIG.path)
+    try:
+        voice_gen_config.validate_paths(
+            APP_CONFIG,
+            ["moss_root", "moss_repo", "voices_dir", "config_dir", "llama_cpp_dir", "onnx_dir"],
+            logger=log,
+        )
+    except voice_gen_config.ConfigError as exc:
+        err(str(exc))
+        raise SystemExit(1) from exc
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
