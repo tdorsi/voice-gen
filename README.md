@@ -125,6 +125,7 @@ Key sections:
 |---------|------|
 | `[paths]` | `moss_root`, `moss_repo`, `weights_dir`, `log_dir`, `voices_dir`, `default_output_dir`, `default_input_file`, `ffmpeg_dir` |
 | `[moss]` | `config_dir`, `llama_cpp_dir`, `onnx_dir` |
+| `[text_to_audio]` | `default_voice` |
 | `[voices.<name>]` | `config`, `reference` |
 
 If `voice_gen.toml` is missing or invalid, the tools fail fast with a clear config error. If required runtime paths are missing, the run log records each missing configured path before the tool exits.
@@ -158,14 +159,24 @@ Use `text_to_audio.bat` when converting an existing `.txt` file to one or more W
 text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --output D:\Training_Data\Audio\TestOut
 ```
 
-Supported built-in voices:
+Configured voices:
 
 | Voice | Config | Reference |
 |-------|--------|-----------|
 | `lori` | `D:\AI_Models\Voice\moss-tts\repo\configs\llama_cpp\lori.yaml` | `D:\AI_Models\Voice\moss-tts\voices\Lori_ref.wav` |
 | `lilybelle` | `D:\AI_Models\Voice\moss-tts\voices\lilybelle.yaml` | `D:\AI_Models\Voice\moss-tts\voices\lilybelle_ref_10s.wav` |
 | `hannah` | `D:\AI_Models\Voice\moss-tts\repo\configs\llama_cpp\hannah.yaml` | `D:\AI_Models\Voice\moss-tts\voices\Hannah_ref.wav` |
-| `all` | Runs `lori`, `lilybelle`, and `hannah` sequentially | Per voice |
+| `all` | Runs every configured voice sequentially | Per voice |
+
+Voice choices are discovered from the `[voices.<name>]` sections in `voice_gen.toml`. To add a voice, add its config and reference paths, then use the section name with `--voice`:
+
+```toml
+[voices.myvoice]
+config = "D:/AI_Models/Voice/moss-tts/voices/myvoice.yaml"
+reference = "D:/AI_Models/Voice/moss-tts/voices/myvoice_ref.wav"
+```
+
+Set `[text_to_audio] default_voice` to change the voice selected when `--voice` is omitted. `--voice all` runs every configured voice in file order.
 
 Common text-to-audio workflows:
 

@@ -42,11 +42,17 @@ class VoiceConfig:
 
 
 @dataclass(frozen=True)
+class TextToAudioConfig:
+    default_voice: str
+
+
+@dataclass(frozen=True)
 class VoiceGenConfig:
     path: Path
     paths: PathConfig
     moss: MossConfig
     voices: dict[str, VoiceConfig]
+    text_to_audio: TextToAudioConfig
 
 
 DEFAULTS = {
@@ -64,6 +70,9 @@ DEFAULTS = {
         "config_dir": "D:/AI_Models/Voice/moss-tts/repo/configs/llama_cpp",
         "llama_cpp_dir": "D:/AI_Models/Voice/moss-tts/repo/moss_tts_delay/llama_cpp",
         "onnx_dir": "D:/AI_Models/Voice/moss-tts/weights/MOSS-Audio-Tokenizer-ONNX",
+    },
+    "text_to_audio": {
+        "default_voice": "lori",
     },
     "voices": {
         "lori": {
@@ -97,6 +106,14 @@ def load_config(config_path: Path | None = None) -> VoiceGenConfig:
         raise ConfigError(f"Invalid TOML in {path}: {exc}") from exc
 
     data = _deep_merge(DEFAULTS, loaded)
+    voices = _voices(data)
+    default_voice = _string(data, "text_to_audio", "default_voice").lower()
+    if default_voice not in voices:
+        raise ConfigError(
+            f"Configured default voice is not defined: {default_voice}. "
+            f"Add [voices.{default_voice}] or change [text_to_audio] default_voice."
+        )
+
     return VoiceGenConfig(
         path=path,
         paths=PathConfig(
@@ -114,7 +131,8 @@ def load_config(config_path: Path | None = None) -> VoiceGenConfig:
             llama_cpp_dir=_path(data, "moss", "llama_cpp_dir"),
             onnx_dir=_path(data, "moss", "onnx_dir"),
         ),
-        voices=_voices(data),
+        voices=voices,
+        text_to_audio=TextToAudioConfig(default_voice=default_voice),
     )
 
 
@@ -162,10 +180,14 @@ def _deep_merge(defaults: dict, overrides: dict) -> dict:
 
 
 def _path(data: dict, section: str, key: str) -> Path:
+    return Path(os.path.expandvars(_string(data, section, key))).expanduser()
+
+
+def _string(data: dict, section: str, key: str) -> str:
     value = data.get(section, {}).get(key)
     if not isinstance(value, str) or not value.strip():
         raise ConfigError(f"Missing or invalid config value: [{section}] {key}")
-    return Path(os.path.expandvars(value)).expanduser()
+    return value.strip()
 
 
 def _voices(data: dict) -> dict[str, VoiceConfig]:

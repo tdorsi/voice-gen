@@ -13,6 +13,9 @@ config_dir = "D:/AI_Models/Voice/moss-tts/repo/configs/llama_cpp"
 llama_cpp_dir = "D:/AI_Models/Voice/moss-tts/repo/moss_tts_delay/llama_cpp"
 onnx_dir = "D:/AI_Models/Voice/moss-tts/weights/MOSS-Audio-Tokenizer-ONNX"
 
+[text_to_audio]
+default_voice = "lori"
+
 [voices.lori]
 config = "D:/AI_Models/Voice/moss-tts/repo/configs/llama_cpp/lori.yaml"
 reference = "D:/AI_Models/Voice/moss-tts/voices/Lori_ref.wav"

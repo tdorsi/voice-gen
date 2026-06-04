@@ -18,7 +18,6 @@ import sys
 import tempfile
 import time
 import traceback
-from dataclasses import dataclass
 from pathlib import Path
 
 import voice_gen_config
@@ -36,33 +35,11 @@ except voice_gen_config.ConfigError as exc:
 MOSS_ROOT = APP_CONFIG.paths.moss_root
 MOSS_REPO = APP_CONFIG.paths.moss_repo
 LLAMA_CPP_DIR = APP_CONFIG.moss.llama_cpp_dir
-CONFIG_DIR = APP_CONFIG.moss.config_dir
-VOICES_DIR = APP_CONFIG.paths.voices_dir
 LOG_DIR = APP_CONFIG.paths.log_dir
 ONNX_DIR = APP_CONFIG.moss.onnx_dir
 log = logging.getLogger("text_to_audio")
 
-
-@dataclass(frozen=True)
-class VoicePreset:
-    config: Path
-    reference: Path
-
-
-VOICE_PRESETS = {
-    "lori": VoicePreset(
-        config=CONFIG_DIR / "lori.yaml",
-        reference=VOICES_DIR / "Lori_ref.wav",
-    ),
-    "lilybelle": VoicePreset(
-        config=VOICES_DIR / "lilybelle.yaml",
-        reference=VOICES_DIR / "lilybelle_ref_10s.wav",
-    ),
-    "hannah": VoicePreset(
-        config=CONFIG_DIR / "hannah.yaml",
-        reference=VOICES_DIR / "Hannah_ref.wav",
-    ),
-}
+CONFIGURED_VOICES = APP_CONFIG.voices
 
 
 def setup_logging(run_name: str = "text_to_audio", log_file: Path | None = None) -> Path:
@@ -345,9 +322,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--voice",
-        default="lori",
-        choices=[*VOICE_PRESETS.keys(), "all"],
-        help="Voice preset to use.",
+        default=APP_CONFIG.text_to_audio.default_voice,
+        choices=[*CONFIGURED_VOICES.keys(), "all"],
+        help="Configured voice preset to use.",
     )
     parser.add_argument("--config", help="Custom MOSS llama.cpp YAML config.")
     parser.add_argument("--reference", help="Custom voice reference WAV.")
@@ -378,9 +355,9 @@ def fill_interactive_args(args: argparse.Namespace) -> argparse.Namespace:
 
     args.input = ask("Input text file", str(APP_CONFIG.paths.default_input_file))
 
-    voice_choices = ", ".join([*VOICE_PRESETS.keys(), "all"])
+    voice_choices = ", ".join([*CONFIGURED_VOICES.keys(), "all"])
     voice = ask(f"Voice ({voice_choices})", args.voice).lower()
-    if voice not in VOICE_PRESETS and voice != "all":
+    if voice not in CONFIGURED_VOICES and voice != "all":
         raise ValueError(f"Unknown voice: {voice}")
     args.voice = voice
 
@@ -446,13 +423,13 @@ def main() -> int:
         custom_config = Path(args.config).expanduser().resolve() if args.config else None
         custom_reference = Path(args.reference).expanduser().resolve() if args.reference else None
     else:
-        voices = list(VOICE_PRESETS) if args.voice == "all" else [args.voice]
+        voices = list(CONFIGURED_VOICES) if args.voice == "all" else [args.voice]
         custom_config = None
         custom_reference = None
 
     results: list[tuple[str, Path, str]] = []
     for voice in voices:
-        preset = VOICE_PRESETS[voice]
+        preset = CONFIGURED_VOICES[voice]
         config = custom_config or preset.config
         reference = custom_reference or preset.reference
         output_path = resolve_output_path(input_path, output, voice)
