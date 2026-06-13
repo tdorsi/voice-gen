@@ -1006,5 +1006,13 @@ def main():
     log.info("Pipeline complete for voice '%s'", voice_name)
 
 
+def run_cli():
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        raise SystemExit(130)
+
+
 if __name__ == "__main__":
-    main()
+    run_cli()
