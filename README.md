@@ -147,9 +147,14 @@ voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --o
 # Resume from fine-tuning
 voice_gen.bat --from-stage 8
 
+# Intentionally reuse an existing output directory for a fresh run
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --force
+
 # Zero-shot only (no fine-tuning)
 voice_gen.bat --skip-finetune
 ```
+
+Fresh Voice_Gen runs are non-destructive by default. If the selected output directory already exists, the tool stops before writing training artifacts. Use `--from-stage N` to resume an existing run. Use `--force` only when you intentionally want a fresh run to reuse an existing output directory; the override is written to the run log.
 
 ### Text-to-Audio Conversion
 

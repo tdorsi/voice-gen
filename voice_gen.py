@@ -18,6 +18,7 @@ Usage
   python voice_gen.py
   python voice_gen.py --voice MyVoice --input D:/Audio/raw --output D:/Audio/out
   python voice_gen.py --from-stage 5   # resume from a specific stage
+  python voice_gen.py --force          # intentionally reuse an existing output dir
 
 Logs are written to D:\\Development\\Voice_Gen\\logs\\<timestamp>.log
 """
@@ -76,6 +77,18 @@ SAMPLE_TEXTS = [
     "This system allows you to clone any voice from just a few seconds of audio.",
     "Voice generation technology has come a long way in recent years.",
 ]
+
+CRITICAL_OUTPUT_FILES = (
+    "reference.wav",
+    "train_raw.jsonl",
+    "train_with_codes.jsonl",
+    ".voice_gen_state.json",
+)
+CRITICAL_OUTPUT_DIRS = (
+    "clips",
+    "checkpoint",
+    "samples",
+)
 
 # ── Logging setup ──────────────────────────────────────────────────────────────
 
@@ -735,6 +748,8 @@ def parse_args():
                    help="Skip HF weight download check (stage 6)")
     p.add_argument("--skip-finetune", action="store_true",
                    help="Skip fine-tuning (stages 7-9)")
+    p.add_argument("--force",         action="store_true",
+                   help="Allow a fresh run to reuse an existing output directory")
     return p.parse_args()
 
 
@@ -784,6 +799,51 @@ def check_dependencies():
     ok(f"ffprobe: {FFPROBE_BIN}")
 
 
+def find_output_collisions(output_dir: Path) -> list[Path]:
+    """Return existing output paths that make a fresh run non-destructive unsafe."""
+    if not output_dir.exists():
+        return []
+
+    collisions: list[Path] = [output_dir]
+    for name in CRITICAL_OUTPUT_FILES:
+        path = output_dir / name
+        if path.exists():
+            collisions.append(path)
+    for name in CRITICAL_OUTPUT_DIRS:
+        path = output_dir / name
+        if path.exists():
+            collisions.append(path)
+    return collisions
+
+
+def enforce_output_protection(output_dir: Path, from_stage: int, force: bool):
+    """Prevent fresh runs from reusing an existing output directory by default."""
+    if from_stage > 1:
+        info(f"Resume mode (--from-stage {from_stage}); existing output directory is allowed")
+        log.info("Overwrite protection: resume mode allows existing output directory: %s", output_dir)
+        return
+
+    collisions = find_output_collisions(output_dir)
+    if not collisions:
+        return
+
+    if force:
+        warn(f"--force set; reusing existing output directory: {output_dir}")
+        log.warning("Overwrite protection overridden with --force for output directory: %s", output_dir)
+        for path in collisions:
+            log.warning("  Existing output path: %s", path)
+        return
+
+    err(f"Output directory already exists: {output_dir}")
+    log.error("Overwrite protection stopped fresh run. Existing output path(s):")
+    for path in collisions:
+        log.error("  %s", path)
+    print()
+    print("Refusing to reuse an existing output directory for a fresh run.")
+    print("Use --from-stage N to resume an existing run, or --force to intentionally reuse this output path.")
+    sys.exit(1)
+
+
 def main():
     args = parse_args()
 
@@ -808,6 +868,7 @@ def main():
     log.info("  Input dir  : %s", input_dir)
     log.info("  Output dir : %s", output_dir)
     log.info("  From stage : %d", args.from_stage)
+    log.info("  Force      : %s", args.force)
     log.info(ui.console_line("═", "="))
     try:
         voice_gen_config.validate_paths(
@@ -823,6 +884,8 @@ def main():
         err(f"Input directory not found: {input_dir}")
         log.error("Input directory does not exist: %s", input_dir)
         sys.exit(1)
+
+    enforce_output_protection(output_dir, args.from_stage, args.force)
 
     clips_dir      = output_dir / "clips"
     samples_dir    = output_dir / "samples"
