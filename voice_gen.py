@@ -859,6 +859,8 @@ def main():
     ))
 
     # Logging must start before dependency checks so failures are written to the run log.
+    if args.log_file:
+        Path(args.log_file).parent.mkdir(parents=True, exist_ok=True)
     log_file = setup_logging(voice_name, Path(args.log_file) if args.log_file else None)
 
     log.info(ui.console_line("═", "="))
