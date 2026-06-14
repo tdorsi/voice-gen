@@ -195,6 +195,9 @@ text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt -
 
 # Dry-run chunking without loading MOSS or generating audio
 text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --dry-run
+
+# Preserve intermediate numbered WAV files for each chunk
+text_to_audio.bat --input script.txt --voice hannah --keep-chunks
 ```
 
 If the target output already exists and overwrite is not selected, `text_to_audio.py` preserves the existing file and writes a timestamped sibling:
@@ -203,6 +206,19 @@ If the target output already exists and overwrite is not selected, `text_to_audi
 TTS_Script_01_hannah.wav
 TTS_Script_01_hannah_075924.wav
 ```
+
+### Progress and ETA
+
+For long-running inference tasks (especially with `--voice all`), the tool reports real-time progress and an Estimated Time of Arrival (ETA).
+
+```
+[3] Generating audio
+    Processing chunk 1 of 5 (180 chars) | ETA: estimating...
+    0.45s audio generated in 2.12s
+    Processing chunk 2 of 5 (175 chars) | ETA: 0m 10s
+```
+
+The ETA factors in all remaining characters across the entire run, providing a stable estimate based on the characters-per-second (CPS) throughput of completed chunks.
 
 For long or difficult text, reduce chunk size and generation length:
 
