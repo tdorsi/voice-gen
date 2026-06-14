@@ -849,8 +849,6 @@ def main():
 
     ui.banner("Voice_Gen — MOSS-TTS Voice Cloning Pipeline")
 
-    check_dependencies()
-
     voice_name = args.voice or ask("Voice name", "MyVoice")
     input_dir  = Path(args.input  or ask("Input audio directory"))
     output_dir = Path(args.output or ask(
@@ -858,7 +856,7 @@ def main():
         str(APP_CONFIG.paths.default_output_dir / voice_name),
     ))
 
-    # Logging starts here — voice_name is known
+    # Logging must start before dependency checks so failures are written to the run log.
     log_file = setup_logging(voice_name)
 
     log.info(ui.console_line("═", "="))
@@ -879,6 +877,8 @@ def main():
     except voice_gen_config.ConfigError as exc:
         err(str(exc))
         raise SystemExit(1) from exc
+
+    check_dependencies()
 
     if not input_dir.exists():
         err(f"Input directory not found: {input_dir}")
