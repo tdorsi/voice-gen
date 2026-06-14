@@ -292,7 +292,7 @@ def synthesize_file(
     start = time.time()
     with LlamaCppPipeline(config) as pipeline:
         for idx, chunk in enumerate(chunks, start=1):
-            info(f"[{idx}/{len(chunks)}] Generating {len(chunk)} chars")
+            info(f"Processing chunk {idx} of {len(chunks)} ({len(chunk)} chars)")
             chunk_start = time.time()
             generated_parts = generate_chunk(pipeline, chunk, f"chunk {idx}")
             audio_parts.extend(generated_parts)
