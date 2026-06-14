@@ -199,6 +199,7 @@ def synthesize_file(
     overwrite: bool,
     dry_run: bool,
     show_chunks: bool,
+    keep_chunks: bool = False,
 ) -> tuple[str, Path]:
     header(1, "Preparing text")
     text = read_text(input_path)
@@ -295,6 +296,13 @@ def synthesize_file(
             chunk_start = time.time()
             generated_parts = generate_chunk(pipeline, chunk, f"chunk {idx}")
             audio_parts.extend(generated_parts)
+
+            if keep_chunks:
+                chunk_path = output_path.with_name(f"{output_path.stem}_chunk_{idx:03d}.wav")
+                chunk_audio = np.concatenate(generated_parts) if generated_parts else np.array([], dtype=np.float32)
+                sf.write(str(chunk_path), chunk_audio, SAMPLE_RATE)
+                log.debug("Saved intermediate chunk: %s", chunk_path)
+
             if idx < len(chunks) and len(silence):
                 audio_parts.append(silence)
             duration = sum(len(part) for part in generated_parts) / SAMPLE_RATE
@@ -339,6 +347,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--show-chunks", action="store_true", help="Print chunk text during --dry-run.")
+    parser.add_argument("--keep-chunks", action="store_true", help="Save intermediate numbered WAV files for each chunk.")
     parser.add_argument("--log-file", help="Write detailed logs to this file.")
     return parser.parse_args()
 
@@ -452,6 +461,7 @@ def main() -> int:
             overwrite=args.overwrite,
             dry_run=args.dry_run,
             show_chunks=args.show_chunks,
+            keep_chunks=args.keep_chunks,
         )
         results.append((voice, final_output_path, status))
 
