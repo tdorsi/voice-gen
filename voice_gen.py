@@ -19,6 +19,7 @@ Usage
   python voice_gen.py --voice MyVoice --input D:/Audio/raw --output D:/Audio/out
   python voice_gen.py --from-stage 5   # resume from a specific stage
   python voice_gen.py --force          # intentionally reuse an existing output dir
+  python voice_gen.py --log-file D:/Logs/run.log
 
 Logs are written to D:\\Development\\Voice_Gen\\logs\\<timestamp>.log
 """
@@ -94,9 +95,9 @@ CRITICAL_OUTPUT_DIRS = (
 
 log = logging.getLogger("voice_gen")
 
-def setup_logging(voice_name: str) -> Path:
+def setup_logging(voice_name: str, log_file: Path | None = None) -> Path:
     """Configure file + console logging. Returns the log file path."""
-    return ui.setup_logging(log, LOG_DIR, voice_name)
+    return ui.setup_logging(log, LOG_DIR, voice_name, log_file=log_file)
 
 def header(stage: int, title: str):
     ui.header(log, stage, title)
@@ -750,6 +751,7 @@ def parse_args():
                    help="Skip fine-tuning (stages 7-9)")
     p.add_argument("--force",         action="store_true",
                    help="Allow a fresh run to reuse an existing output directory")
+    p.add_argument("--log-file",      help="Write the run log to a specific file path")
     return p.parse_args()
 
 
@@ -857,7 +859,7 @@ def main():
     ))
 
     # Logging must start before dependency checks so failures are written to the run log.
-    log_file = setup_logging(voice_name)
+    log_file = setup_logging(voice_name, Path(args.log_file) if args.log_file else None)
 
     log.info(ui.console_line("═", "="))
     log.info("Voice_Gen run started")
@@ -867,6 +869,7 @@ def main():
     log.info("  Output dir : %s", output_dir)
     log.info("  From stage : %d", args.from_stage)
     log.info("  Force      : %s", args.force)
+    log.info("  Log file   : %s", log_file)
     log.info(ui.console_line("═", "="))
     try:
         voice_gen_config.validate_paths(

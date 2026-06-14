@@ -150,6 +150,9 @@ voice_gen.bat --from-stage 8
 # Intentionally reuse an existing output directory for a fresh run
 voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --force
 
+# Write the run log to a specific path
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --log-file D:\Logs\<VoiceName>.log
+
 # Zero-shot only (no fine-tuning)
 voice_gen.bat --skip-finetune
 ```
@@ -273,7 +276,7 @@ logs/<YYYYMMDD_HHMMSS>_<voice>.log
 logs/<YYYYMMDD_HHMMSS>_text_to_audio_<voice>.log
 ```
 
-Training logs include full DEBUG output and subprocess logs. Text-to-audio logs include command arguments, selected voice, input/output paths, chunk counts, per-chunk generation timings, output collision handling, final output path, and errors/tracebacks.
+Training logs include full DEBUG output and subprocess logs. Use `--log-file PATH` to write a training run log to a specific file instead of the default timestamped path. Text-to-audio logs include command arguments, selected voice, input/output paths, chunk counts, per-chunk generation timings, output collision handling, final output path, and errors/tracebacks.
 
 ---
 
