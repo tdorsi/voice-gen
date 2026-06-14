@@ -153,11 +153,15 @@ voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --o
 # Write the run log to a specific path
 voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --log-file D:\Logs\<VoiceName>.log
 
+# Plan input prep without transcription or training
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --dry-run
+
 # Zero-shot only (no fine-tuning)
 voice_gen.bat --skip-finetune
 ```
 
 Fresh Voice_Gen runs are non-destructive by default. If the selected output directory already exists, the tool stops before writing training artifacts. Use `--from-stage N` to resume an existing run. Use `--force` only when you intentionally want a fresh run to reuse an existing output directory; the override is written to the run log.
+Use `--dry-run` to run input scanning, splitting, cleanup, scoring, and reference selection, then stop before transcription, weight checks/downloads, token encoding, fine-tuning, sample generation, or config export.
 
 ### Text-to-Audio Conversion
 

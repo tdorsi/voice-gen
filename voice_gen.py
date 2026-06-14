@@ -522,6 +522,43 @@ def stage5_transcribe(clips: list[Path], ref_wav: Path, output_dir: Path) -> Pat
     return jsonl_path
 
 
+def print_dry_run_summary(
+    voice_name: str,
+    input_dir: Path,
+    output_dir: Path,
+    short: list[Path],
+    long_: list[Path],
+    split_clips: list[Path],
+    all_clips: list[Path],
+    ref_wav: Path,
+    log_file: Path,
+):
+    line = ui.console_line("=", "=")
+    print()
+    print(f"{BOLD}{CYAN}{line}")
+    print("  Voice_Gen dry-run plan")
+    print(f"{line}{RESET}")
+    print(f"  Voice     : {voice_name}")
+    print(f"  Input     : {input_dir}")
+    print(f"  Output    : {output_dir}")
+    print(f"  Usable    : {len(short)} ready clip(s), {len(long_)} long file(s)")
+    print(f"  Split     : {len(split_clips)} generated clip(s)")
+    print(f"  Cleaned   : {len(all_clips)} candidate clip(s)")
+    print(f"  Reference : {ref_wav}")
+    print("  Stopped   : before transcription, downloads, token encoding, fine-tuning, samples, config")
+    print(f"  Log       : {log_file}")
+    print(f"{CYAN}{line}{RESET}\n")
+
+    log.info("Dry-run summary")
+    log.info("  Voice: %s", voice_name)
+    log.info("  Input: %s", input_dir)
+    log.info("  Output: %s", output_dir)
+    log.info("  Usable: %d ready clip(s), %d long file(s)", len(short), len(long_))
+    log.info("  Split: %d generated clip(s)", len(split_clips))
+    log.info("  Cleaned: %d candidate clip(s)", len(all_clips))
+    log.info("  Reference: %s", ref_wav)
+
+
 def stage6_weights(skip: bool = False):
     header(6, "HuggingFace weights")
     if skip:
@@ -749,6 +786,8 @@ def parse_args():
                    help="Skip HF weight download check (stage 6)")
     p.add_argument("--skip-finetune", action="store_true",
                    help="Skip fine-tuning (stages 7-9)")
+    p.add_argument("--dry-run",       action="store_true",
+                   help="Plan input prep through reference selection, then stop before training artifacts")
     p.add_argument("--force",         action="store_true",
                    help="Allow a fresh run to reuse an existing output directory")
     p.add_argument("--log-file",      help="Write the run log to a specific file path")
@@ -870,6 +909,7 @@ def main():
     log.info("  Input dir  : %s", input_dir)
     log.info("  Output dir : %s", output_dir)
     log.info("  From stage : %d", args.from_stage)
+    log.info("  Dry run    : %s", args.dry_run)
     log.info("  Force      : %s", args.force)
     log.info("  Log file   : %s", log_file)
     log.info(ui.console_line("═", "="))
@@ -885,6 +925,11 @@ def main():
 
     check_dependencies()
 
+    if args.dry_run and args.from_stage > 4:
+        err("--dry-run only runs stages 1-4; use --from-stage 1 through 4")
+        log.error("--dry-run requested with unsupported --from-stage %d", args.from_stage)
+        sys.exit(1)
+
     if not input_dir.exists():
         err(f"Input directory not found: {input_dir}")
         log.error("Input directory does not exist: %s", input_dir)
@@ -896,7 +941,8 @@ def main():
     samples_dir    = output_dir / "samples"
     checkpoint_dir = output_dir / "checkpoint"
     clips_dir.mkdir(parents=True, exist_ok=True)
-    samples_dir.mkdir(parents=True, exist_ok=True)
+    if not args.dry_run:
+        samples_dir.mkdir(parents=True, exist_ok=True)
 
     info(f"Voice name : {voice_name}")
     info(f"Input      : {input_dir}")
@@ -945,6 +991,20 @@ def main():
             ref_wav = Path(state.get("ref_wav", output_dir / "reference.wav"))
             ok("Stage 4 loaded from saved state")
 
+        if args.dry_run:
+            print_dry_run_summary(
+                voice_name,
+                input_dir,
+                output_dir,
+                short,
+                long_,
+                split_clips,
+                all_clips,
+                ref_wav,
+                log_file,
+            )
+            return
+
         # ── Stage 5 ──
         if args.from_stage <= 5:
             jsonl_raw = stage5_transcribe(all_clips, ref_wav, output_dir)
@@ -979,6 +1039,7 @@ def main():
 
             # ── Stage 9 ──
             if args.from_stage <= 9:
+                samples_dir.mkdir(parents=True, exist_ok=True)
                 stage9_samples(checkpoint_dir, ref_wav, samples_dir)
                 save_state(state_file, state)
 
