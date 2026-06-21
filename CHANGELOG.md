@@ -4,6 +4,39 @@ All notable changes to Voice_Gen are documented here.
 
 ---
 
+## [v0.3.0] — 2026-06-21
+
+### Added
+
+- Shared configuration framework:
+  - `voice_gen.toml` centralizes runtime paths, defaults, and voice presets.
+  - `voice_gen_config.py` loads and validates configuration relative to the project.
+  - `voice_gen_utils.py` provides shared terminal UI, logging, prompt, and output helpers.
+  - Voice presets and default input/output paths are configuration-driven and discoverable.
+- Voice training hardening:
+  - Fresh runs protect existing output directories by default; `--force` provides an
+    explicit, logged override while `--from-stage` continues to support safe resume.
+  - `--dry-run` performs input preparation through reference selection, then stops before
+    transcription, downloads, token encoding, fine-tuning, sample generation, and export.
+  - `--log-file` redirects the run log and creates missing parent directories.
+  - Graceful `KeyboardInterrupt` handling exits cleanly with status 130.
+  - Dependency failures are recorded in the run log before exit.
+- Text-to-audio enhancements:
+  - `--keep-chunks` preserves numbered per-chunk WAV files while retaining the final
+    concatenated output.
+  - Live chunk progress reporting includes chunk counts and character counts.
+  - ETA reporting uses measured completed-chunk throughput and accounts for remaining
+    voices when `--voice all` is selected.
+
+### Changed
+
+- `voice_gen.py` and `text_to_audio.py` now share configuration, logging, and terminal
+  behavior instead of maintaining separate hardcoded defaults.
+- README usage and configuration guidance now covers the v0.3.0 training and inference
+  workflows.
+
+---
+
 ## [v0.2.0] — 2026-06-01
 
 ### Added
