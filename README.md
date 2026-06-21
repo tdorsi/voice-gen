@@ -1,8 +1,19 @@
 # Voice_Gen
 ## Version
-Current Version: v0.2.0
+Current Version: v0.3.0
 
 A fully local voice cloning pipeline that fine-tunes large text-to-speech models on consumer GPUs — no cloud APIs, no subscriptions, no data leaving your machine.
+
+---
+
+## What's New in v0.3.0
+
+- Shared TOML configuration for paths, defaults, and voice presets.
+- Safer training runs with overwrite protection, `--force`, `--log-file`, graceful
+  cancellation, and a pre-training `--dry-run`.
+- Text-to-audio chunk preservation with `--keep-chunks`, live progress, and ETA reporting.
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete release notes.
 
 ---
 
