@@ -18,6 +18,8 @@ Usage
   python voice_gen.py
   python voice_gen.py --voice MyVoice --input D:/Audio/raw --output D:/Audio/out
   python voice_gen.py --from-stage 5   # resume from a specific stage
+  python voice_gen.py --force          # intentionally reuse an existing output dir
+  python voice_gen.py --log-file D:/Logs/run.log
 
 Logs are written to D:\\Development\\Voice_Gen\\logs\\<timestamp>.log
 """
@@ -31,23 +33,32 @@ import shutil
 import subprocess
 import sys
 import traceback
-from datetime import datetime
 from pathlib import Path
+
+import voice_gen_config
+import voice_gen_utils as ui
+from voice_gen_utils import BOLD, CYAN, GREEN, RESET
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
-MOSS_REPO     = Path(r"D:\AI_Models\Voice\moss-tts\repo")
-WEIGHTS_DIR   = Path(r"D:\AI_Models\Voice\moss-tts\weights")
+try:
+    APP_CONFIG = voice_gen_config.load_config()
+except voice_gen_config.ConfigError as exc:
+    print(f"Config error: {exc}", file=sys.stderr)
+    raise SystemExit(1) from exc
+
+MOSS_REPO     = APP_CONFIG.paths.moss_repo
+WEIGHTS_DIR   = APP_CONFIG.paths.weights_dir
 HF_MOSS_DIR   = WEIGHTS_DIR / "MOSS-TTS-HF"
 HF_CODEC_DIR  = WEIGHTS_DIR / "MOSS-Audio-Tokenizer-HF"
 HF_MOSS_ID    = "OpenMOSS-Team/MOSS-TTS"
 HF_CODEC_ID   = "OpenMOSS-Team/MOSS-Audio-Tokenizer"
-VOICES_DIR    = Path(r"D:\AI_Models\Voice\moss-tts\voices")
+VOICES_DIR    = APP_CONFIG.paths.voices_dir
 SERVER_GGUF   = WEIGHTS_DIR / "MOSS-TTS-GGUF" / "MOSS_TTS_Q4_K_M.gguf"
-ONNX_ENC      = WEIGHTS_DIR / "MOSS-Audio-Tokenizer-ONNX" / "encoder.onnx"
-ONNX_DEC      = WEIGHTS_DIR / "MOSS-Audio-Tokenizer-ONNX" / "decoder.onnx"
-LOG_DIR       = Path(r"D:\Development\Voice_Gen\logs")
-FFMPEG_DIR    = Path(r"D:\Development\Voice_Gen\ffmpeg")  # standalone static build
+ONNX_ENC      = APP_CONFIG.moss.onnx_dir / "encoder.onnx"
+ONNX_DEC      = APP_CONFIG.moss.onnx_dir / "decoder.onnx"
+LOG_DIR       = APP_CONFIG.paths.log_dir
+FFMPEG_DIR    = APP_CONFIG.paths.ffmpeg_dir  # standalone static build
 
 # ── Audio constants ────────────────────────────────────────────────────────────
 
@@ -68,71 +79,40 @@ SAMPLE_TEXTS = [
     "Voice generation technology has come a long way in recent years.",
 ]
 
+CRITICAL_OUTPUT_FILES = (
+    "reference.wav",
+    "train_raw.jsonl",
+    "train_with_codes.jsonl",
+    ".voice_gen_state.json",
+)
+CRITICAL_OUTPUT_DIRS = (
+    "clips",
+    "checkpoint",
+    "samples",
+)
+
 # ── Logging setup ──────────────────────────────────────────────────────────────
 
 log = logging.getLogger("voice_gen")
 
-def setup_logging(voice_name: str) -> Path:
+def setup_logging(voice_name: str, log_file: Path | None = None) -> Path:
     """Configure file + console logging. Returns the log file path."""
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = LOG_DIR / f"{ts}_{voice_name}.log"
-
-    log.setLevel(logging.DEBUG)
-
-    # File handler — full DEBUG detail, no colour codes
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)-8s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
-    log.addHandler(fh)
-
-    # Console handler — INFO and above (coloured output handled separately)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(logging.Formatter("%(message)s"))
-    log.addHandler(ch)
-
-    log.info("Log file: %s", log_file)
-    return log_file
-
-# ── Console helpers (write to both terminal and log file) ──────────────────────
-
-BOLD  = "\033[1m"
-CYAN  = "\033[96m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-RED   = "\033[91m"
-RESET = "\033[0m"
+    return ui.setup_logging(log, LOG_DIR, voice_name, log_file=log_file)
 
 def header(stage: int, title: str):
-    line = f"{'─'*60}"
-    log.info("")
-    log.info(line)
-    log.info("  Stage %d: %s", stage, title)
-    log.info(line)
-    # Coloured version to console only
-    print(f"\n{BOLD}{CYAN}{line}{RESET}")
-    print(f"{BOLD}{CYAN}  Stage {stage}: {title}{RESET}")
-    print(f"{BOLD}{CYAN}{line}{RESET}")
+    ui.header(log, stage, title)
 
 def ok(msg: str):
-    log.info("  ✓ %s", msg)
-    print(f"{GREEN}  ✓ {msg}{RESET}")
+    ui.ok(log, msg)
 
 def warn(msg: str):
-    log.warning("  ! %s", msg)
-    print(f"{YELLOW}  ! {msg}{RESET}")
+    ui.warn(log, msg)
 
 def err(msg: str):
-    log.error("  ✗ %s", msg)
-    print(f"{RED}  ✗ {msg}{RESET}")
+    ui.err(log, msg)
 
 def info(msg: str):
-    log.info("    %s", msg)
-    # Already printed by the log StreamHandler
+    ui.info(log, msg)
 
 # ── ffmpeg helpers ─────────────────────────────────────────────────────────────
 
@@ -542,6 +522,43 @@ def stage5_transcribe(clips: list[Path], ref_wav: Path, output_dir: Path) -> Pat
     return jsonl_path
 
 
+def print_dry_run_summary(
+    voice_name: str,
+    input_dir: Path,
+    output_dir: Path,
+    short: list[Path],
+    long_: list[Path],
+    split_clips: list[Path],
+    all_clips: list[Path],
+    ref_wav: Path,
+    log_file: Path,
+):
+    line = ui.console_line("=", "=")
+    print()
+    print(f"{BOLD}{CYAN}{line}")
+    print("  Voice_Gen dry-run plan")
+    print(f"{line}{RESET}")
+    print(f"  Voice     : {voice_name}")
+    print(f"  Input     : {input_dir}")
+    print(f"  Output    : {output_dir}")
+    print(f"  Usable    : {len(short)} ready clip(s), {len(long_)} long file(s)")
+    print(f"  Split     : {len(split_clips)} generated clip(s)")
+    print(f"  Cleaned   : {len(all_clips)} candidate clip(s)")
+    print(f"  Reference : {ref_wav}")
+    print("  Stopped   : before transcription, downloads, token encoding, fine-tuning, samples, config")
+    print(f"  Log       : {log_file}")
+    print(f"{CYAN}{line}{RESET}\n")
+
+    log.info("Dry-run summary")
+    log.info("  Voice: %s", voice_name)
+    log.info("  Input: %s", input_dir)
+    log.info("  Output: %s", output_dir)
+    log.info("  Usable: %d ready clip(s), %d long file(s)", len(short), len(long_))
+    log.info("  Split: %d generated clip(s)", len(split_clips))
+    log.info("  Cleaned: %d candidate clip(s)", len(all_clips))
+    log.info("  Reference: %s", ref_wav)
+
+
 def stage6_weights(skip: bool = False):
     header(6, "HuggingFace weights")
     if skip:
@@ -756,9 +773,7 @@ def load_state(state_file: Path) -> dict:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def ask(prompt: str, default: str = "") -> str:
-    display = f"{prompt} [{default}]: " if default else f"{prompt}: "
-    val = input(display).strip()
-    return val or default
+    return ui.ask(prompt, default)
 
 def parse_args():
     p = argparse.ArgumentParser(description="MOSS-TTS voice cloning & fine-tuning pipeline")
@@ -771,6 +786,11 @@ def parse_args():
                    help="Skip HF weight download check (stage 6)")
     p.add_argument("--skip-finetune", action="store_true",
                    help="Skip fine-tuning (stages 7-9)")
+    p.add_argument("--dry-run",       action="store_true",
+                   help="Plan input prep through reference selection, then stop before training artifacts")
+    p.add_argument("--force",         action="store_true",
+                   help="Allow a fresh run to reuse an existing output directory")
+    p.add_argument("--log-file",      help="Write the run log to a specific file path")
     return p.parse_args()
 
 
@@ -820,43 +840,109 @@ def check_dependencies():
     ok(f"ffprobe: {FFPROBE_BIN}")
 
 
+def find_output_collisions(output_dir: Path) -> list[Path]:
+    """Return existing output paths that make a fresh run non-destructive unsafe."""
+    if not output_dir.exists():
+        return []
+
+    collisions: list[Path] = [output_dir]
+    for name in CRITICAL_OUTPUT_FILES:
+        path = output_dir / name
+        if path.exists():
+            collisions.append(path)
+    for name in CRITICAL_OUTPUT_DIRS:
+        path = output_dir / name
+        if path.exists():
+            collisions.append(path)
+    return collisions
+
+
+def enforce_output_protection(output_dir: Path, from_stage: int, force: bool):
+    """Prevent fresh runs from reusing an existing output directory by default."""
+    if from_stage > 1:
+        info(f"Resume mode (--from-stage {from_stage}); existing output directory is allowed")
+        log.info("Overwrite protection: resume mode allows existing output directory: %s", output_dir)
+        return
+
+    collisions = find_output_collisions(output_dir)
+    if not collisions:
+        return
+
+    if force:
+        warn(f"--force set; reusing existing output directory: {output_dir}")
+        log.warning("Overwrite protection overridden with --force for output directory: %s", output_dir)
+        for path in collisions:
+            log.warning("  Existing output path: %s", path)
+        return
+
+    err(f"Output directory already exists: {output_dir}")
+    log.error("Overwrite protection stopped fresh run. Existing output path(s):")
+    for path in collisions:
+        log.error("  %s", path)
+    print()
+    print("Refusing to reuse an existing output directory for a fresh run.")
+    print("Use --from-stage N to resume an existing run, or --force to intentionally reuse this output path.")
+    sys.exit(1)
+
+
 def main():
     args = parse_args()
 
-    print(f"\n{BOLD}{CYAN}{'═'*60}")
-    print("  Voice_Gen — MOSS-TTS Voice Cloning Pipeline")
-    print(f"{'═'*60}{RESET}\n")
-
-    check_dependencies()
+    ui.banner("Voice_Gen — MOSS-TTS Voice Cloning Pipeline")
 
     voice_name = args.voice or ask("Voice name", "MyVoice")
     input_dir  = Path(args.input  or ask("Input audio directory"))
     output_dir = Path(args.output or ask(
         "Output directory",
-        str(Path("D:/Development/Voice_Gen/output") / voice_name),
+        str(APP_CONFIG.paths.default_output_dir / voice_name),
     ))
 
-    # Logging starts here — voice_name is known
-    log_file = setup_logging(voice_name)
+    # Logging must start before dependency checks so failures are written to the run log.
+    if args.log_file:
+        Path(args.log_file).parent.mkdir(parents=True, exist_ok=True)
+    log_file = setup_logging(voice_name, Path(args.log_file) if args.log_file else None)
 
-    log.info("═" * 60)
+    log.info(ui.console_line("═", "="))
     log.info("Voice_Gen run started")
+    log.info("  Config     : %s", APP_CONFIG.path)
     log.info("  Voice name : %s", voice_name)
     log.info("  Input dir  : %s", input_dir)
     log.info("  Output dir : %s", output_dir)
     log.info("  From stage : %d", args.from_stage)
-    log.info("═" * 60)
+    log.info("  Dry run    : %s", args.dry_run)
+    log.info("  Force      : %s", args.force)
+    log.info("  Log file   : %s", log_file)
+    log.info(ui.console_line("═", "="))
+    try:
+        voice_gen_config.validate_paths(
+            APP_CONFIG,
+            ["moss_repo", "weights_dir", "voices_dir", "onnx_dir"],
+            logger=log,
+        )
+    except voice_gen_config.ConfigError as exc:
+        err(str(exc))
+        raise SystemExit(1) from exc
+
+    check_dependencies()
+
+    if args.dry_run and args.from_stage > 4:
+        err("--dry-run only runs stages 1-4; use --from-stage 1 through 4")
+        log.error("--dry-run requested with unsupported --from-stage %d", args.from_stage)
+        sys.exit(1)
 
     if not input_dir.exists():
         err(f"Input directory not found: {input_dir}")
         log.error("Input directory does not exist: %s", input_dir)
         sys.exit(1)
 
+    enforce_output_protection(output_dir, args.from_stage, args.force)
+
     clips_dir      = output_dir / "clips"
     samples_dir    = output_dir / "samples"
     checkpoint_dir = output_dir / "checkpoint"
     clips_dir.mkdir(parents=True, exist_ok=True)
-    samples_dir.mkdir(parents=True, exist_ok=True)
+    if not args.dry_run:
+        samples_dir.mkdir(parents=True, exist_ok=True)
 
     info(f"Voice name : {voice_name}")
     info(f"Input      : {input_dir}")
@@ -905,6 +991,20 @@ def main():
             ref_wav = Path(state.get("ref_wav", output_dir / "reference.wav"))
             ok("Stage 4 loaded from saved state")
 
+        if args.dry_run:
+            print_dry_run_summary(
+                voice_name,
+                input_dir,
+                output_dir,
+                short,
+                long_,
+                split_clips,
+                all_clips,
+                ref_wav,
+                log_file,
+            )
+            return
+
         # ── Stage 5 ──
         if args.from_stage <= 5:
             jsonl_raw = stage5_transcribe(all_clips, ref_wav, output_dir)
@@ -939,6 +1039,7 @@ def main():
 
             # ── Stage 9 ──
             if args.from_stage <= 9:
+                samples_dir.mkdir(parents=True, exist_ok=True)
                 stage9_samples(checkpoint_dir, ref_wav, samples_dir)
                 save_state(state_file, state)
 
@@ -957,7 +1058,8 @@ def main():
         err(f"  {log_file}")
         sys.exit(1)
 
-    print(f"\n{BOLD}{GREEN}{'═'*60}")
+    final_line = ui.console_line("═", "=")
+    print(f"\n{BOLD}{GREEN}{final_line}")
     print(f"  Voice '{voice_name}' pipeline complete!")
     print(f"  Reference : {ref_wav}")
     print(f"  Samples   : {samples_dir}")
@@ -965,10 +1067,18 @@ def main():
         print(f"  Checkpoint: {checkpoint_dir}")
     print(f"  Config    : {output_dir / (voice_name + '.yaml')}")
     print(f"  Log       : {log_file}")
-    print(f"{'═'*60}{RESET}\n")
+    print(f"{final_line}{RESET}\n")
 
     log.info("Pipeline complete for voice '%s'", voice_name)
 
 
+def run_cli():
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        raise SystemExit(130)
+
+
 if __name__ == "__main__":
-    main()
+    run_cli()

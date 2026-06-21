@@ -1,6 +1,6 @@
 # Voice_Gen
 ## Version
-Current Version: v0.1.0
+Current Version: v0.2.0
 
 A fully local voice cloning pipeline that fine-tunes large text-to-speech models on consumer GPUs — no cloud APIs, no subscriptions, no data leaving your machine.
 
@@ -37,6 +37,7 @@ This project is also a foundational component of a larger system (Nova-Vex), whe
 
 - Fine-tunes an 8B parameter TTS model on a 12GB GPU  
 - Fully automated pipeline from raw audio → trained voice  
+- Converts text files to WAV audio using local MOSS-TTS voice configs  
 - Runs completely offline (no external APIs)  
 - Produces reusable voice models for downstream systems  
 - Resume-safe pipeline with stage-level recovery  
@@ -114,7 +115,24 @@ Voice_Gen expects ffmpeg to be available on the system.
 
 ## Usage
 
-### Basic
+## Configuration
+
+Voice_Gen loads shared settings from `voice_gen.toml` in the repository root. The config path is resolved relative to the Python module location, so `voice_gen.py` and `text_to_audio.py` can be launched from batch files or other working directories.
+
+Key sections:
+
+| Section | Keys |
+|---------|------|
+| `[paths]` | `moss_root`, `moss_repo`, `weights_dir`, `log_dir`, `voices_dir`, `default_output_dir`, `default_input_file`, `ffmpeg_dir` |
+| `[moss]` | `config_dir`, `llama_cpp_dir`, `onnx_dir` |
+| `[text_to_audio]` | `default_voice` |
+| `[voices.<name>]` | `config`, `reference` |
+
+If `voice_gen.toml` is missing or invalid, the tools fail fast with a clear config error. If required runtime paths are missing, the run log records each missing configured path before the tool exits.
+
+### Voice Training Pipeline
+
+Use `voice_gen.bat` when preparing, training, and exporting a reusable voice.
 
 ```bat
 voice_gen.bat --voice MyVoice --input D:\Audio\raw --output D:\Audio\output
@@ -129,9 +147,98 @@ voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --o
 # Resume from fine-tuning
 voice_gen.bat --from-stage 8
 
+# Intentionally reuse an existing output directory for a fresh run
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --force
+
+# Write the run log to a specific path
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --log-file D:\Logs\<VoiceName>.log
+
+# Plan input prep without transcription or training
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --dry-run
+
 # Zero-shot only (no fine-tuning)
 voice_gen.bat --skip-finetune
 ```
+
+Fresh Voice_Gen runs are non-destructive by default. If the selected output directory already exists, the tool stops before writing training artifacts. Use `--from-stage N` to resume an existing run. Use `--force` only when you intentionally want a fresh run to reuse an existing output directory; the override is written to the run log.
+Use `--dry-run` to run input scanning, splitting, cleanup, scoring, and reference selection, then stop before transcription, weight checks/downloads, token encoding, fine-tuning, sample generation, or config export.
+
+### Text-to-Audio Conversion
+
+Use `text_to_audio.bat` when converting an existing `.txt` file to one or more WAV files with local MOSS-TTS voices. This is inference only; it does not train or fine-tune.
+
+```bat
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --output D:\Training_Data\Audio\TestOut
+```
+
+Configured voices:
+
+| Voice | Config | Reference |
+|-------|--------|-----------|
+| `lori` | `D:\AI_Models\Voice\moss-tts\repo\configs\llama_cpp\lori.yaml` | `D:\AI_Models\Voice\moss-tts\voices\Lori_ref.wav` |
+| `lilybelle` | `D:\AI_Models\Voice\moss-tts\voices\lilybelle.yaml` | `D:\AI_Models\Voice\moss-tts\voices\lilybelle_ref_10s.wav` |
+| `hannah` | `D:\AI_Models\Voice\moss-tts\repo\configs\llama_cpp\hannah.yaml` | `D:\AI_Models\Voice\moss-tts\voices\Hannah_ref.wav` |
+| `all` | Runs every configured voice sequentially | Per voice |
+
+Voice choices are discovered from the `[voices.<name>]` sections in `voice_gen.toml`. To add a voice, add its config and reference paths, then use the section name with `--voice`:
+
+```toml
+[voices.myvoice]
+config = "D:/AI_Models/Voice/moss-tts/voices/myvoice.yaml"
+reference = "D:/AI_Models/Voice/moss-tts/voices/myvoice_ref.wav"
+```
+
+Set `[text_to_audio] default_voice` to change the voice selected when `--voice` is omitted. `--voice all` runs every configured voice in file order.
+
+Common text-to-audio workflows:
+
+```bat
+# Prompt interactively
+text_to_audio.bat
+
+# Generate one voice
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --output D:\Training_Data\Audio\TestOut
+
+# Generate all built-in voices
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice all --output D:\Training_Data\Audio\TestOut
+
+# Replace an existing output file
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --output D:\Training_Data\Audio\TestOut --overwrite
+
+# Dry-run chunking without loading MOSS or generating audio
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --dry-run
+
+# Preserve intermediate numbered WAV files for each chunk
+text_to_audio.bat --input script.txt --voice hannah --keep-chunks
+```
+
+If the target output already exists and overwrite is not selected, `text_to_audio.py` preserves the existing file and writes a timestamped sibling:
+
+```
+TTS_Script_01_hannah.wav
+TTS_Script_01_hannah_075924.wav
+```
+
+### Progress and ETA
+
+For long-running inference tasks (especially with `--voice all`), the tool reports real-time progress and an Estimated Time of Arrival (ETA).
+
+```
+[3] Generating audio
+    Processing chunk 1 of 5 (180 chars) | ETA: estimating...
+    0.45s audio generated in 2.12s
+    Processing chunk 2 of 5 (175 chars) | ETA: 0m 10s
+```
+
+The ETA factors in all remaining characters across the entire run, providing a stable estimate based on the characters-per-second (CPS) throughput of completed chunks.
+
+For long or difficult text, reduce chunk size and generation length:
+
+```bat
+text_to_audio.bat --input D:\Training_Data\Audio\Test_Script\TTS_Script_01.txt --voice hannah --chunk-chars 100 --max-new-tokens 600
+```
+
+Stop any running MOSS inference server before large text-to-audio runs if VRAM is constrained. A loaded server can consume most of a 12GB GPU.
 
 ---
 
@@ -182,13 +289,14 @@ Peak VRAM during training: ~10.8 GB.
 
 ## Logs
 
-Each run generates a timestamped log:
+Each training or text-to-audio run generates a timestamped log:
 
 ```
 logs/<YYYYMMDD_HHMMSS>_<voice>.log
+logs/<YYYYMMDD_HHMMSS>_text_to_audio_<voice>.log
 ```
 
-Includes full DEBUG output and subprocess logs.
+Training logs include full DEBUG output and subprocess logs. Use `--log-file PATH` to write a training run log to a specific file instead of the default timestamped path. Text-to-audio logs include command arguments, selected voice, input/output paths, chunk counts, per-chunk generation timings, output collision handling, final output path, and errors/tracebacks.
 
 ---
 
@@ -203,6 +311,30 @@ Use standalone static build (conda version causes DLL conflicts).
 ### CUDA OOM
 - Stop inference server before training  
 - Reduce LoRA rank if needed  
+
+### Text-to-audio context errors
+If llama.cpp reports a context or memory-slot decode error, reduce text generation workload:
+
+```bat
+text_to_audio.bat --input <file.txt> --voice hannah --chunk-chars 100 --max-new-tokens 600
+```
+
+The converter also retries failing chunks by splitting them smaller, but very long or punctuation-light sections may still require smaller chunk settings.
+
+### Text-to-audio output is not where expected
+When `--output` is a directory, files are written there as:
+
+```
+<input_stem>_<voice>.wav
+```
+
+If the file already exists and overwrite is declined, the converter writes:
+
+```
+<input_stem>_<voice>_<HHMMSS>.wav
+```
+
+Check the run log for the exact `Saved:` path.
 
 ---
 
@@ -220,6 +352,8 @@ Use standalone static build (conda version causes DLL conflicts).
 Voice_Gen/
   voice_gen.py
   voice_gen.bat
+  text_to_audio.py
+  text_to_audio.bat
   train_qlora.py
   logs/
   ffmpeg/
