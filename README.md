@@ -147,9 +147,21 @@ voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --o
 # Resume from fine-tuning
 voice_gen.bat --from-stage 8
 
+# Intentionally reuse an existing output directory for a fresh run
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --force
+
+# Write the run log to a specific path
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --log-file D:\Logs\<VoiceName>.log
+
+# Plan input prep without transcription or training
+voice_gen.bat --voice <VoiceName> --input D:\Training_Data\Audio\<VoiceName> --output D:\Voices\<VoiceName> --dry-run
+
 # Zero-shot only (no fine-tuning)
 voice_gen.bat --skip-finetune
 ```
+
+Fresh Voice_Gen runs are non-destructive by default. If the selected output directory already exists, the tool stops before writing training artifacts. Use `--from-stage N` to resume an existing run. Use `--force` only when you intentionally want a fresh run to reuse an existing output directory; the override is written to the run log.
+Use `--dry-run` to run input scanning, splitting, cleanup, scoring, and reference selection, then stop before transcription, weight checks/downloads, token encoding, fine-tuning, sample generation, or config export.
 
 ### Text-to-Audio Conversion
 
@@ -284,7 +296,7 @@ logs/<YYYYMMDD_HHMMSS>_<voice>.log
 logs/<YYYYMMDD_HHMMSS>_text_to_audio_<voice>.log
 ```
 
-Training logs include full DEBUG output and subprocess logs. Text-to-audio logs include command arguments, selected voice, input/output paths, chunk counts, per-chunk generation timings, output collision handling, final output path, and errors/tracebacks.
+Training logs include full DEBUG output and subprocess logs. Use `--log-file PATH` to write a training run log to a specific file instead of the default timestamped path. Text-to-audio logs include command arguments, selected voice, input/output paths, chunk counts, per-chunk generation timings, output collision handling, final output path, and errors/tracebacks.
 
 ---
 
