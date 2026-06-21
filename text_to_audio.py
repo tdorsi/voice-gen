@@ -199,6 +199,10 @@ def synthesize_file(
     overwrite: bool,
     dry_run: bool,
     show_chunks: bool,
+    keep_chunks: bool = False,
+    global_total_chars: int = 0,
+    global_chars_done: int = 0,
+    start_time_global: float = 0,
 ) -> tuple[str, Path]:
     header(1, "Preparing text")
     text = read_text(input_path)
@@ -291,10 +295,30 @@ def synthesize_file(
     start = time.time()
     with LlamaCppPipeline(config) as pipeline:
         for idx, chunk in enumerate(chunks, start=1):
-            info(f"[{idx}/{len(chunks)}] Generating {len(chunk)} chars")
+            # Calculate ETA
+            chars_finished = global_chars_done + sum(len(c) for c in chunks[:idx-1])
+            elapsed_total = time.time() - start_time_global
+
+            if chars_finished > 0 and elapsed_total > 0:
+                cps = chars_finished / elapsed_total
+                chars_remaining = global_total_chars - chars_finished
+                seconds_remaining = chars_remaining / cps
+                mins, secs = divmod(seconds_remaining, 60)
+                eta_str = f"ETA: {int(mins)}m {int(secs)}s"
+            else:
+                eta_str = "ETA: estimating..."
+
+            info(f"Processing chunk {idx} of {len(chunks)} ({len(chunk)} chars) | {eta_str}")
             chunk_start = time.time()
             generated_parts = generate_chunk(pipeline, chunk, f"chunk {idx}")
             audio_parts.extend(generated_parts)
+
+            if keep_chunks:
+                chunk_path = output_path.with_name(f"{output_path.stem}_chunk_{idx:03d}.wav")
+                chunk_audio = np.concatenate(generated_parts) if generated_parts else np.array([], dtype=np.float32)
+                sf.write(str(chunk_path), chunk_audio, SAMPLE_RATE)
+                log.debug("Saved intermediate chunk: %s", chunk_path)
+
             if idx < len(chunks) and len(silence):
                 audio_parts.append(silence)
             duration = sum(len(part) for part in generated_parts) / SAMPLE_RATE
@@ -339,6 +363,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--show-chunks", action="store_true", help="Print chunk text during --dry-run.")
+    parser.add_argument("--keep-chunks", action="store_true", help="Save intermediate numbered WAV files for each chunk.")
     parser.add_argument("--log-file", help="Write detailed logs to this file.")
     return parser.parse_args()
 
@@ -414,6 +439,10 @@ def main() -> int:
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
+    text = read_text(input_path)
+    chunks = split_text(text, args.chunk_chars)
+    total_chars_in_file = sum(len(c) for c in chunks)
+
     output = Path(args.output).expanduser().resolve() if args.output else None
 
     if args.config or args.reference:
@@ -426,6 +455,10 @@ def main() -> int:
         voices = list(CONFIGURED_VOICES) if args.voice == "all" else [args.voice]
         custom_config = None
         custom_reference = None
+
+    global_total_chars = total_chars_in_file * len(voices)
+    global_chars_done = 0
+    start_time_global = time.time()
 
     results: list[tuple[str, Path, str]] = []
     for voice in voices:
@@ -452,7 +485,12 @@ def main() -> int:
             overwrite=args.overwrite,
             dry_run=args.dry_run,
             show_chunks=args.show_chunks,
+            keep_chunks=args.keep_chunks,
+            global_total_chars=global_total_chars,
+            global_chars_done=global_chars_done,
+            start_time_global=start_time_global,
         )
+        global_chars_done += total_chars_in_file
         results.append((voice, final_output_path, status))
 
     line = ui.console_line("═", "=")
